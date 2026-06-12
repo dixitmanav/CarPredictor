@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Car Price Advisor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f4;
+      --card: #ffffff;
+      --border: #e4e4e7;
+      --text: #18181b;
+      --muted: #71717a;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --green: #16a34a;
+      --yellow: #d97706;
+      --red: #dc2626;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { color: var(--muted); margin-top: 0.4rem; font-size: 0.95rem; }
+
+    .layout {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-title .badge {
+      font-size: 0.7rem;
+      font-weight: 500;
+      background: #f0fdf4;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+    }
+    .card-title .badge.optional {
+      background: #fafafa;
+      color: var(--muted);
+      border-color: var(--border);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      background: #fafafa;
+      color: var(--text);
+      transition: border-color 0.15s, background 0.15s;
+      appearance: none;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: #fff;
+    }
+
+    .toggle-trade {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      cursor: pointer;
+      user-select: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--accent);
+    }
+    .toggle-trade input[type="checkbox"] { width: 1rem; height: 1rem; cursor: pointer; }
+
+    #trade-section { display: none; margin-top: 0.5rem; }
+    #trade-section.visible { display: block; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.25rem 0;
+    }
+
+    .submit-row {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-end;
+    }
+    .submit-row .field { flex: 1; }
+
+    button[type="submit"] {
+      padding: 0.65rem 1.75rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    button[type="submit"]:hover  { background: var(--accent-hover); }
+    button[type="submit"]:active { transform: scale(0.98); }
+
+    #results { display: none; }
+    #results.visible { display: flex; flex-direction: column; gap: 1rem; }
+
+    .result-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .result-card-header {
+      padding: 0.85rem 1.25rem;
+      background: #fafafa;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .result-card-body { padding: 1.25rem; }
+
+    .price-range {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .price-range .lo  { font-size: 1.5rem; font-weight: 700; }
+    .price-range .sep { color: var(--muted); font-size: 1rem; }
+    .price-range .hi  { font-size: 1.5rem; font-weight: 700; }
+    .price-range .label { font-size: 0.8rem; color: var(--muted); margin-left: 0.25rem; }
+
+    .strategy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .strategy-item {
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+    .strategy-item .s-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+    .strategy-item .s-val   { font-size: 1.1rem; font-weight: 700; }
+    .strategy-item.open   .s-val { color: var(--green); }
+    .strategy-item.target .s-val { color: var(--accent); }
+    .strategy-item.walk   .s-val { color: var(--red); }
+
+    .dealer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      margin-top: 0.75rem;
+    }
+    .dealer-pill.fair         { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .dealer-pill.slightly_high { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+    .dealer-pill.high         { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+    .net-box {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    .net-item {
+      flex: 1;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+    }
+    .net-item .n-label { font-size: 0.75rem; color: #3b82f6; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .net-item .n-val   { font-size: 1.3rem; font-weight: 700; margin-top: 0.2rem; }
+
+    .tip {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #fffbeb;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.85rem;
+      color: #78350f;
+      line-height: 1.5;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      .grid-2, .grid-3, .strategy-grid { grid-template-columns: 1fr 1fr; }
+      .net-box { flex-direction: column; }
+    }
+    @media (max-width: 420px) {
+      .grid-2, .grid-3, .strategy-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Car Price Advisor</h1>
+    <p>ML-backed estimates from 400k+ US listings — know your number before you walk in.</p>
+  </header>
+
+  <div class="layout">
+    <form id="form">
+      <!-- Buying -->
+      <div class="card">
+        <div class="card-title">
+          Car I'm Buying
+          <span class="badge">Required</span>
+        </div>
+
+        <div class="grid-2" style="margin-bottom:1rem">
+          <div>
+            <label>Make</label>
+            <select id="buy_make" name="buy_make" required>
+              <option value="">Select make...</option>
+              {% for make in makes %}
+              <option value="{{ make }}">{{ make | title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Model</label>
+            <select id="buy_model" name="buy_model" required disabled>
+              <option value="">Select model...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-bottom:1rem">
+          <div>
+            <label>Year</label>
+            <input type="number" id="buy_year" name="buy_year" min="2000" max="2024" placeholder="e.g. 2019" required />
+          </div>
+          <div>
+            <label>Mileage</label>
+            <input type="number" id="buy_odo" name="buy_odo" min="0" max="300000" placeholder="e.g. 55000" required />
+          </div>
+          <div>
+            <label>Cylinders</label>
+            <select id="buy_cyls" name="buy_cyls" required>
+              <option value="4" selected>4 cyl</option>
+              <option value="6">6 cyl</option>
+              <option value="8">8 cyl</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-bottom:1rem">
+          <div>
+            <label>Condition</label>
+            <select id="buy_cond" name="buy_cond">
+              <option value="good" selected>Good</option>
+              <option value="excellent">Excellent</option>
+              <option value="like new">Like New</option>
+              <option value="fair">Fair</option>
+              <option value="salvage">Salvage</option>
+            </select>
+          </div>
+          <div>
+            <label>Drivetrain</label>
+            <select id="buy_drive" name="buy_drive">
+              <option value="fwd" selected>FWD</option>
+              <option value="rwd">RWD</option>
+              <option value="4wd">4WD / AWD</option>
+            </select>
+          </div>
+          <div>
+            <label>Transmission</label>
+            <select id="buy_trans" name="buy_trans">
+              <option value="automatic" selected>Automatic</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div>
+            <label>Fuel</label>
+            <select id="buy_fuel" name="buy_fuel">
+              <option value="gas" selected>Gas</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="electric">Electric</option>
+              <option value="diesel">Diesel</option>
+            </select>
+          </div>
+          <div>
+            <label>Title</label>
+            <select id="buy_title" name="buy_title">
+              <option value="clean" selected>Clean</option>
+              <option value="rebuilt">Rebuilt</option>
+              <option value="salvage">Salvage</option>
+              <option value="lien">Lien</option>
+            </select>
+          </div>
+          <div>
+            <label>Your State</label>
+            <select id="state" name="state">
+              <option value="ca">California</option>
+              <option value="tx">Texas</option>
+              <option value="fl">Florida</option>
+              <option value="ny">New York</option>
+              <option value="wa">Washington</option>
+              <option value="co">Colorado</option>
+              <option value="or">Oregon</option>
+              <option value="ma">Massachusetts</option>
+              <option value="nj">New Jersey</option>
+              <option value="il">Illinois</option>
+              <option value="az">Arizona</option>
+              <option value="nv">Nevada</option>
+              <option value="oh">Ohio</option>
+              <option value="mi">Michigan</option>
+              <option value="pa">Pennsylvania</option>
+              <option value="nc">North Carolina</option>
+              <option value="va">Virginia</option>
+              <option value="ga">Georgia</option>
+              <option value="tn">Tennessee</option>
+              <option value="md">Maryland</option>
+              <option value="mn">Minnesota</option>
+              <option value="wi">Wisconsin</option>
+              <option value="in">Indiana</option>
+              <option value="mo">Missouri</option>
+              <option value="sc">South Carolina</option>
+              <option value="ky">Kentucky</option>
+              <option value="ok">Oklahoma</option>
+              <option value="al">Alabama</option>
+              <option value="la">Louisiana</option>
+              <option value="ar">Arkansas</option>
+              <option value="ms">Mississippi</option>
+              <option value="ks">Kansas</option>
+              <option value="ne">Nebraska</option>
+              <option value="ia">Iowa</option>
+              <option value="wv">West Virginia</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <div>
+          <label style="margin-bottom:0.5rem">Dealer's Asking Price (optional)</label>
+          <input type="number" id="dealer_asking" name="dealer_asking" min="0" placeholder="Leave blank if unknown" style="max-width:220px" />
+        </div>
+      </div>
+
+      <!-- Trade-in toggle -->
+      <div class="card">
+        <label class="toggle-trade">
+          <input type="checkbox" id="trade-toggle" />
+          I have a car to trade in
+        </label>
+
+        <div id="trade-section">
+          <hr class="divider" />
+          <div class="card-title" style="margin-bottom:1.25rem">
+            My Trade-In
+            <span class="badge optional">Optional</span>
+          </div>
+
+          <div class="grid-2" style="margin-bottom:1rem">
+            <div>
+              <label>Make</label>
+              <select id="trade_make" name="trade_make">
+                <option value="">Select make...</option>
+                {% for make in makes %}
+                <option value="{{ make }}">{{ make | title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Model</label>
+              <select id="trade_model" name="trade_model" disabled>
+                <option value="">Select model...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-3" style="margin-bottom:1rem">
+            <div>
+              <label>Year</label>
+              <input type="number" id="trade_year" name="trade_year" min="2000" max="2024" placeholder="e.g. 2016" />
+            </div>
+            <div>
+              <label>Mileage</label>
+              <input type="number" id="trade_odo" name="trade_odo" min="0" max="300000" placeholder="e.g. 88000" />
+            </div>
+            <div>
+              <label>Cylinders</label>
+              <select id="trade_cyls" name="trade_cyls">
+                <option value="4" selected>4 cyl</option>
+                <option value="6">6 cyl</option>
+                <option value="8">8 cyl</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <label>Condition</label>
+              <select id="trade_cond" name="trade_cond">
+                <option value="good" selected>Good</option>
+                <option value="excellent">Excellent</option>
+                <option value="like new">Like New</option>
+                <option value="fair">Fair</option>
+                <option value="salvage">Salvage</option>
+              </select>
+            </div>
+            <div>
+              <label>Drivetrain</label>
+              <select id="trade_drive" name="trade_drive">
+                <option value="fwd" selected>FWD</option>
+                <option value="rwd">RWD</option>
+                <option value="4wd">4WD / AWD</option>
+              </select>
+            </div>
+            <div>
+              <label>Fuel</label>
+              <select id="trade_fuel" name="trade_fuel">
+                <option value="gas" selected>Gas</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="electric">Electric</option>
+                <option value="diesel">Diesel</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-top:1rem">
+            <div>
+              <label>Transmission</label>
+              <select id="trade_trans" name="trade_trans">
+                <option value="automatic" selected>Automatic</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+            <div>
+              <label>Title</label>
+              <select id="trade_title" name="trade_title">
+                <option value="clean" selected>Clean</option>
+                <option value="rebuilt">Rebuilt</option>
+                <option value="salvage">Salvage</option>
+                <option value="lien">Lien</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit">Get Estimate</button>
+    </form>
+
+    <!-- Results -->
+    <div id="results">
+      <div id="loading" class="loading" style="display:none">Calculating...</div>
+
+      <div id="buy-result" class="result-card" style="display:none">
+        <div class="result-card-header" id="buy-result-title">Buying Estimate</div>
+        <div class="result-card-body">
+          <div class="price-range">
+            <span class="lo" id="buy-lo"></span>
+            <span class="sep">–</span>
+            <span class="hi" id="buy-hi"></span>
+            <span class="label">fair market range</span>
+          </div>
+          <div id="dealer-pill-wrap"></div>
+          <div class="strategy-grid">
+            <div class="strategy-item open">
+              <div class="s-label">Open offer</div>
+              <div class="s-val" id="buy-open"></div>
+            </div>
+            <div class="strategy-item target">
+              <div class="s-label">Target</div>
+              <div class="s-val" id="buy-target"></div>
+            </div>
+            <div class="strategy-item walk">
+              <div class="s-label">Walk away above</div>
+              <div class="s-val" id="buy-walk"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="trade-result" class="result-card" style="display:none">
+        <div class="result-card-header" id="trade-result-title">Trade-In Estimate</div>
+        <div class="result-card-body">
+          <div class="price-range">
+            <span class="lo" id="trade-lo"></span>
+            <span class="sep">–</span>
+            <span class="hi" id="trade-hi"></span>
+            <span class="label">expected dealer offer range</span>
+          </div>
+          <div class="strategy-grid">
+            <div class="strategy-item open" style="--c:var(--green)">
+              <div class="s-label">Ask for</div>
+              <div class="s-val" id="trade-ask"></div>
+            </div>
+            <div class="strategy-item target">
+              <div class="s-label">Target</div>
+              <div class="s-val" id="trade-target"></div>
+            </div>
+            <div class="strategy-item walk">
+              <div class="s-label">Minimum accept</div>
+              <div class="s-val" id="trade-floor"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="net-result" class="result-card" style="display:none">
+        <div class="result-card-header">Combined Deal</div>
+        <div class="result-card-body">
+          <div class="net-box">
+            <div class="net-item">
+              <div class="n-label">Net out-of-pocket (fair scenario)</div>
+              <div class="n-val" id="net-fair"></div>
+            </div>
+            <div class="net-item">
+              <div class="n-label">Best realistic outcome</div>
+              <div class="n-val" id="net-best"></div>
+            </div>
+          </div>
+          <div class="tip">
+            Negotiate the purchase price and trade-in value separately. Dealers combine them to obscure which side you're losing on.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fmt = n => "$" + Math.round(n).toLocaleString();
+
+    function wireDropdown(makeEl, modelEl) {
+      makeEl.addEventListener("change", async () => {
+        const make = makeEl.value;
+        modelEl.innerHTML = '<option value="">Loading...</option>';
+        modelEl.disabled = true;
+        if (!make) { modelEl.innerHTML = '<option value="">Select model...</option>'; return; }
+        const res = await fetch(`/models_for_make/${encodeURIComponent(make)}`);
+        const models = await res.json();
+        modelEl.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join("");
+        modelEl.disabled = false;
+      });
+    }
+
+    wireDropdown(document.getElementById("buy_make"),   document.getElementById("buy_model"));
+    wireDropdown(document.getElementById("trade_make"), document.getElementById("trade_model"));
+
+    document.getElementById("trade-toggle").addEventListener("change", function () {
+      document.getElementById("trade-section").classList.toggle("visible", this.checked);
+    });
+
+    document.getElementById("form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const buyMake  = document.getElementById("buy_make").value;
+      const buyModel = document.getElementById("buy_model").value;
+      if (!buyMake || !buyModel) { alert("Please select a make and model."); return; }
+
+      document.getElementById("loading").style.display = "block";
+      document.getElementById("results").classList.add("visible");
+      document.getElementById("buy-result").style.display  = "none";
+      document.getElementById("trade-result").style.display = "none";
+      document.getElementById("net-result").style.display  = "none";
+
+      const hasTrade = document.getElementById("trade-toggle").checked;
+      const payload  = {
+        buy_make:  buyMake,
+        buy_model: buyModel,
+        buy_year:  document.getElementById("buy_year").value,
+        buy_odo:   document.getElementById("buy_odo").value,
+        buy_cond:  document.getElementById("buy_cond").value,
+        buy_drive: document.getElementById("buy_drive").value,
+        buy_trans: document.getElementById("buy_trans").value,
+        buy_fuel:  document.getElementById("buy_fuel").value,
+        buy_title: document.getElementById("buy_title").value,
+        buy_cyls:  document.getElementById("buy_cyls").value,
+        state:     document.getElementById("state").value,
+        dealer_asking: document.getElementById("dealer_asking").value || null,
+      };
+
+      if (hasTrade) {
+        const tm = document.getElementById("trade_make").value;
+        const tmod = document.getElementById("trade_model").value;
+        if (tm && tmod) {
+          payload.trade_make  = tm;
+          payload.trade_model = tmod;
+          payload.trade_year  = document.getElementById("trade_year").value;
+          payload.trade_odo   = document.getElementById("trade_odo").value;
+          payload.trade_cond  = document.getElementById("trade_cond").value;
+          payload.trade_drive = document.getElementById("trade_drive").value;
+          payload.trade_trans = document.getElementById("trade_trans").value;
+          payload.trade_fuel  = document.getElementById("trade_fuel").value;
+          payload.trade_title = document.getElementById("trade_title").value;
+          payload.trade_cyls  = document.getElementById("trade_cyls").value;
+        }
+      }
+
+      try {
+        const res  = await fetch("/predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const data = await res.json();
+
+        document.getElementById("loading").style.display = "none";
+
+        const buyMakeTitle  = buyMake.charAt(0).toUpperCase() + buyMake.slice(1);
+        const buyModelTitle = buyModel.charAt(0).toUpperCase() + buyModel.slice(1);
+        document.getElementById("buy-result-title").textContent = `Buying: ${buyMakeTitle} ${buyModelTitle}`;
+
+        document.getElementById("buy-lo").textContent     = fmt(data.buy.lo);
+        document.getElementById("buy-hi").textContent     = fmt(data.buy.hi);
+        document.getElementById("buy-open").textContent   = fmt(data.buy.open_offer);
+        document.getElementById("buy-target").textContent = fmt(data.buy.target);
+        document.getElementById("buy-walk").textContent   = fmt(data.buy.walkaway);
+
+        const pillWrap = document.getElementById("dealer-pill-wrap");
+        pillWrap.innerHTML = "";
+        if (data.buy.dealer) {
+          const d = data.buy.dealer;
+          const label = d.verdict === "fair" ? "Fair price" : d.verdict === "slightly_high" ? "Slightly high" : "Overpriced";
+          const sign  = d.pct > 0 ? "+" : "";
+          pillWrap.innerHTML = `<span class="dealer-pill ${d.verdict}">Dealer asking ${fmt(d.asking)} &mdash; ${sign}${d.pct}% vs fair &mdash; ${label}</span>`;
+        }
+
+        document.getElementById("buy-result").style.display = "block";
+
+        if (data.trade) {
+          const tradeMake = payload.trade_make;
+          const tradeModel = payload.trade_model;
+          document.getElementById("trade-result-title").textContent =
+            `Trade-In: ${tradeMake.charAt(0).toUpperCase()+tradeMake.slice(1)} ${tradeModel.charAt(0).toUpperCase()+tradeModel.slice(1)}`;
+
+          document.getElementById("trade-lo").textContent     = fmt(data.trade.lo);
+          document.getElementById("trade-hi").textContent     = fmt(data.trade.hi);
+          document.getElementById("trade-ask").textContent    = fmt(data.trade.ask_for);
+          document.getElementById("trade-target").textContent = fmt(data.trade.pred);
+          document.getElementById("trade-floor").textContent  = fmt(data.trade.floor);
+
+          document.getElementById("trade-result").style.display = "block";
+
+          document.getElementById("net-fair").textContent = fmt(data.net.fair);
+          document.getElementById("net-best").textContent = fmt(Math.max(0, data.net.best));
+          document.getElementById("net-result").style.display = "block";
+        }
+
+      } catch (err) {
+        document.getElementById("loading").style.display = "none";
+        alert("Something went wrong. Is the server running?");
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>

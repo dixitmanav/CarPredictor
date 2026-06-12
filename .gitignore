@@ -1,0 +1,20 @@
+# dataset — 1.4 GB, download from Kaggle
+vehicles.csv
+data/
+
+# trained model binaries — regenerate by running car_predictor.py
+models/
+
+# jupyter
+.ipynb_checkpoints/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# OS
+.DS_Store
