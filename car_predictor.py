@@ -9,6 +9,7 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_absolute_error, r2_score
+from model_normalizer import build_model_map
 
 warnings.filterwarnings("ignore")
 
@@ -45,6 +46,14 @@ df = df[
 ].copy()
 
 print(f"  {len(df):,} rows after cleaning")
+
+# Normalize model names: strip trim levels and fix misspellings within each make.
+print("  Normalizing model names...")
+for make, grp in df.groupby("manufacturer"):
+    mapping = build_model_map(grp["model"])
+    df.loc[df["manufacturer"] == make, "model"] = grp["model"].map(mapping)
+df = df[df["model"].notna() & (df["model"] != "")].copy()
+print(f"  {len(df):,} rows after model normalization")
 
 df["age"] = CURRENT_YEAR - df["year"]
 
