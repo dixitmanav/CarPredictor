@@ -106,14 +106,14 @@ Same target encoding applied to state. California listings are systematically hi
 ### Purchase Price Target
 The raw listing price from the dataset. This represents what private sellers actually ask (and roughly receive) for their cars.
 
-### Trade-In Target (engineered)
-There is no "trade-in value" column in the dataset — Craigslist doesn't have it. Instead, we construct a proxy:
-
-For each (age bucket, condition score) cell in the data, take the **25th percentile price**. This represents the lower end of what private sellers accept for a car of that age and condition.
+### Trade-In Target (quantile regression)
+There is no "trade-in value" column in the dataset — Craigslist doesn't have it. Instead of inventing a target column, the trade-in model learns from the **same listing prices** as the purchase model but is trained to predict a different point: the **25th percentile** price for a car with these exact features. Put simply, it answers "what price do only 1 in 4 comparable cars sell below?"
 
 **Why the 25th percentile?** Dealers buy trade-ins at wholesale, not retail. They need margin to resell. The lower quartile of private listings is the closest publicly available proxy for what dealers pay — it's the price at which sellers are clearly motivated and dealers can make money on resale. We then apply an additional 15% dealer discount on top of this to account for the difference between private-party and wholesale.
 
-**Why not use a separate dataset?** KBB/Edmunds trade-in data isn't publicly available. This proxy approach is transparent, reproducible, and tuned to be slightly conservative on purpose — it's better for the user to walk in with a number that's a slight underestimate of what they should ask than an overestimate.
+**Why not use a separate dataset?** KBB/Edmunds trade-in data isn't publicly available. This approach is transparent, reproducible, and tuned to be slightly conservative on purpose — it's better for the user to walk in with a number that's a slight underestimate of what they should ask than an overestimate.
+
+**What was wrong with the first version:** the original target was the 25th-percentile price of each (age bucket, condition) group, computed ahead of time. Because age and condition were also model inputs, the model could reconstruct the target exactly — it scored R² = 1.000 and MAE ≈ $0 without learning anything about individual cars (a 2015 Civic and a 2015 BMW in "good" condition got the same trade-in value). Quantile regression fixes both problems: the target is real prices, and the prediction depends on every feature, including make and model.
 
 ---
 
@@ -134,30 +134,19 @@ For each (age bucket, condition score) cell in the data, take the **25th percent
 - `subsample=0.8`: Trains each tree on a random 80% of the data (stochastic gradient boosting), which reduces overfitting and speeds up training.
 - `loss="absolute_error"`: Optimizes for MAE directly. The mean-squared-error loss would penalize large errors quadratically, making the model overfit to outlier listings.
 
-**Results on held-out test set:**
-- MAE ≈ $444
-- R² ≈ 0.979
-- MAPE ≈ 3.9%
+**Results on held-out test set (67,197 listings, all makes and models):**
+- MAE ≈ $3,056
+- R² ≈ 0.869
 
-Interpretation: on average, the model is off by $444, explaining 97.9% of price variance. For a car valued at $12,000, the model is wrong by about 3.7%.
+Interpretation: on average, the model is off by about $3,056 and explains 86.9% of the variation in listing prices. Craigslist prices are noisy (the same car is listed at very different prices by different sellers), so a few thousand dollars of error is expected. The single-model notebook (`notebooks/car_negotiator.ipynb`) scores much higher because it only has to price one model, e.g. Camrys.
 
-### Trade-In Value Model: Random Forest Regressor
+### Trade-In Value Model: Gradient Boosting with Quantile Loss
 
-**Why Random Forest instead of GBR?** The trade-in target is a 25th-percentile value derived from the same data used to train the model. It has a smoother, less noisy distribution than raw prices. Random Forest works well here because:
-1. It's an averaging model — prediction is the mean over 300 trees — which is well-suited to a smoothed target.
-2. It's faster to train than GBR (trees are grown independently and in parallel via `n_jobs=-1`).
-3. GBR's sequential nature is most valuable when the residual signal is complex; for a percentile-smoothed target, the extra complexity of boosting isn't necessary.
+Same algorithm and hyperparameters as the purchase model, with one change: `loss="quantile", alpha=0.25`. A normal regression model aims for the middle of the price distribution. Quantile loss tilts the target by penalizing over-predictions three times as heavily as under-predictions. The result is that the model's best guess settles at the price 25% of comparable cars fall below.
 
-**Hyperparameters:**
-- `n_estimators=300`: 300 trees, enough to stabilize the averaging.
-- `max_depth=10`: Deeper trees than the GBR because the target is smoother and overfitting is less of a risk.
-- `min_samples_leaf=10`: Same rationale — prevent fitting to individual outlier cells.
-
-**Results:**
-- MAE ≈ $41
-- R² ≈ 0.998
-
-The very high R² is expected because the target itself is a smooth function of the features (it's derived from percentiles of the training data, not raw observations). The MAE of $41 reflects real predictive accuracy on held-out test points.
+**How it is evaluated.** R² and MAE against actual prices don't make sense here, since the model is *supposed* to predict below the typical price. Instead:
+- **Coverage (calibration):** the share of test prices that fall below the prediction. It should be 25%. **Result: 25.0%.**
+- **Pinball loss:** the standard error metric for quantile predictions (it's what the model minimizes). Compared with a baseline that predicts the same overall 25th-percentile price for every car: **$1,170 vs $3,595**, a 67% reduction. So the model is genuinely using each car's features.
 
 ---
 
@@ -177,9 +166,9 @@ Pipeline([("scaler", StandardScaler()), ("model", ...)])
 ## Evaluation
 
 ### Metrics
-- **MAE (Mean Absolute Error):** Average dollar error. Directly interpretable. "The model is off by $444 on average."
-- **R² (coefficient of determination):** Fraction of price variance explained by the model. 0.979 means the model explains 97.9% of why prices differ between listings.
-- **MAPE (Mean Absolute Percentage Error):** Percentage error, useful for comparing accuracy across price ranges. 3.9% means errors are proportionally small even for cheap cars.
+- **MAE (Mean Absolute Error):** Average dollar error. Directly interpretable. "The purchase model is off by about $3,056 on average."
+- **R² (coefficient of determination):** Fraction of price variance explained by the model. 0.869 means the purchase model explains 86.9% of why prices differ between listings.
+- **Coverage and pinball loss (trade-in model):** see the trade-in model section above.
 
 ### Train/Test Split
 80/20 split with `random_state=42`. The test set was held out entirely — no hyperparameter tuning was done on it, so the reported metrics are unbiased estimates of real-world performance.
@@ -202,7 +191,7 @@ The point estimate from the model is converted into a range using the test-set r
 - **Walk-away ceiling:** 102% of the high end — the maximum you'll pay; above this, data says you're overpaying.
 
 ### Trade-In Strategy
-The model predicts dealer wholesale value. We then:
+The model predicts dealer wholesale value. Its fair range is percentage-based rather than a fixed dollar amount, because the model's errors grow with the car's value (about $2.4k on cars under $8k versus $7.1k on cars over $20k). The range is `pred × e^(−0.5σ)` to `pred × e^(0.4σ)`, where σ is the standard deviation of the log residuals on the test set (≈ 0.29). We then:
 - **Ask for:** 105% of the predicted high end — starts negotiations above your fair value.
 - **Floor:** 90% of the predicted low end — the minimum you'll accept.
 
@@ -220,7 +209,7 @@ For the purchase model, the most important features are:
 4. **age_x_miles** — the interaction captures "high miles for an old car" scenarios
 5. **condition_score** — dealer-reported condition matters less than age/miles but is significant
 
-For the trade-in model, the ranking is similar but `make_ratio` rises because dealers care more about brand resale value when buying wholesale.
+For the trade-in model, the ranking is similar since it learns from the same prices; it just aims lower in the distribution.
 
 ---
 

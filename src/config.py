@@ -14,6 +14,7 @@ PRICE_MIN, PRICE_MAX = 1_500, 80_000
 MILEAGE_MAX = 300_000
 YEAR_MIN = 2000
 DEALER_DISCOUNT = 0.15
+TRADEIN_QUANTILE = 0.25   # trade-in model predicts this percentile of comparable listing prices
 
 # Columns kept from the raw Craigslist dump; everything else is dropped in step 1.
 RAW_COLUMNS = [

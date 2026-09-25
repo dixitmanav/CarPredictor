@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import joblib
+import numpy as np
 import pandas as pd
 from flask import Flask, render_template, request, jsonify
 
@@ -84,9 +85,9 @@ def predict():
         )
         raw       = float(tradein_model.predict(trade_X)[0])
         pred      = raw * (1 - meta["dealer_discount"])
-        t_std     = meta["tradein_std"]
-        trade_lo  = max(500, pred - t_std * 0.5)
-        trade_hi  = pred + t_std * 0.4
+        t_log_std = meta["tradein_log_std"]
+        trade_lo  = max(500, pred * np.exp(-0.5 * t_log_std))
+        trade_hi  = pred * np.exp(0.4 * t_log_std)
 
         result["trade"] = {
             "pred":     round(pred),

@@ -9,13 +9,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error, mean_pinball_loss, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.config import CURRENT_YEAR, DEALER_DISCOUNT, ENCODINGS_PATH, FEATURES, FEATURES_DATA, MODELS_DIR
+from src.config import (
+    CURRENT_YEAR, DEALER_DISCOUNT, ENCODINGS_PATH, FEATURES, FEATURES_DATA, MODELS_DIR, TRADEIN_QUANTILE,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -24,12 +26,9 @@ with open(ENCODINGS_PATH) as f:
     enc = json.load(f)
 
 X = df[FEATURES].values
-y_purchase = df["price"].values
-y_tradein = df["tradein_target"].values
+y = df["price"].values
 
-X_tr, X_te, yp_tr, yp_te, yt_tr, yt_te = train_test_split(
-    X, y_purchase, y_tradein, test_size=0.2, random_state=42
-)
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
 print(f"Train: {len(X_tr):,}  |  Test: {len(X_te):,}")
 
 purchase_model = Pipeline([
@@ -41,39 +40,59 @@ purchase_model = Pipeline([
     )),
 ])
 print("Training purchase price model (GBR) ...")
-purchase_model.fit(X_tr, yp_tr)
+purchase_model.fit(X_tr, y_tr)
 
+# Trade-in: quantile regression on the same listing prices. Instead of the typical
+# price, it predicts the price that only 25% of comparable cars sell below: the
+# low end a dealer buying at wholesale would anchor to.
 tradein_model = Pipeline([
     ("scaler", StandardScaler()),
-    ("rf", RandomForestRegressor(
-        n_estimators=300, max_depth=10,
-        min_samples_leaf=10, random_state=42, n_jobs=-1,
+    ("gbr", GradientBoostingRegressor(
+        n_estimators=400, learning_rate=0.05, max_depth=5,
+        min_samples_leaf=10, subsample=0.8,
+        loss="quantile", alpha=TRADEIN_QUANTILE, random_state=42,
     )),
 ])
-print("Training trade-in model (RF) ...")
-tradein_model.fit(X_tr, yt_tr)
+print(f"Training trade-in model (GBR, {TRADEIN_QUANTILE:.0%} quantile) ...")
+tradein_model.fit(X_tr, y_tr)
 
 p_preds = purchase_model.predict(X_te)
 t_preds = tradein_model.predict(X_te)
 
-p_mae = mean_absolute_error(yp_te, p_preds)
-p_r2  = r2_score(yp_te, p_preds)
-t_mae = mean_absolute_error(yt_te, t_preds)
-t_r2  = r2_score(yt_te, t_preds)
+p_mae = mean_absolute_error(y_te, p_preds)
+p_r2  = r2_score(y_te, p_preds)
+
+# A well-calibrated 25% quantile model has ~25% of real prices fall below its prediction.
+t_coverage = float(np.mean(y_te < t_preds))
+t_pinball  = mean_pinball_loss(y_te, t_preds, alpha=TRADEIN_QUANTILE)
+# Baseline: one global 25th-percentile price for every car, ignoring its features.
+t_pinball_base = mean_pinball_loss(
+    y_te, np.full_like(y_te, np.quantile(y_tr, TRADEIN_QUANTILE), dtype=float), alpha=TRADEIN_QUANTILE
+)
 
 print(f"\nPurchase model  MAE ${p_mae:,.0f}   R² {p_r2:.3f}")
-print(f"Trade-in model  MAE ${t_mae:,.0f}    R² {t_r2:.3f}")
+print(
+    f"Trade-in model  {t_coverage:.1%} of test prices below prediction (target {TRADEIN_QUANTILE:.0%})   "
+    f"pinball loss ${t_pinball:,.0f} vs ${t_pinball_base:,.0f} baseline"
+)
 
 metadata = {
     **enc,
     "features": FEATURES,
-    "purchase_std": float(np.std(yp_te - p_preds)),
-    "tradein_std": float(np.std(yt_te - t_preds)),
+    "purchase_std": float(np.std(y_te - p_preds)),
+    # Trade-in errors grow with the car's value, so the app's range is a percentage
+    # of the prediction: std of the log residuals (0.29 ≈ ±29%).
+    "tradein_log_std": float(np.std(np.log(y_te) - np.log(np.clip(t_preds, 500, None)))),
     "dealer_discount": DEALER_DISCOUNT,
     "current_year": CURRENT_YEAR,
     "metrics": {
         "purchase": {"mae": round(p_mae, 2), "r2": round(p_r2, 4)},
-        "tradein":  {"mae": round(t_mae, 2), "r2": round(t_r2, 4)},
+        "tradein":  {
+            "quantile": TRADEIN_QUANTILE,
+            "coverage": round(t_coverage, 4),
+            "pinball_loss": round(t_pinball, 2),
+            "pinball_loss_baseline": round(t_pinball_base, 2),
+        },
     },
 }
 
