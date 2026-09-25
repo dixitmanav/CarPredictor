@@ -1,42 +1,31 @@
-from flask import Flask, render_template, request, jsonify
-import numpy as np
-import joblib
 import json
+import sys
 from pathlib import Path
 
-app = Flask(__name__)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-MODELS_DIR = Path("models")
+import joblib
+import pandas as pd
+from flask import Flask, render_template, request, jsonify
+
+from src.config import MODELS_DIR
+from src.features import add_features, feature_matrix
+
+app = Flask(__name__)
 
 purchase_model = joblib.load(MODELS_DIR / "purchase_model.pkl")
 tradein_model  = joblib.load(MODELS_DIR / "tradein_model.pkl")
 with open(MODELS_DIR / "metadata.json") as f:
     meta = json.load(f)
 
-CONDITION_MAP = {"salvage": 1, "fair": 2, "good": 3, "excellent": 4, "like new": 5, "new": 6}
-DRIVE_MAP     = {"fwd": 0, "rwd": 1, "4wd": 2}
-TRANS_MAP     = {"automatic": 1, "manual": 0}
-FUEL_MAP      = {"gas": 0, "hybrid": 1, "electric": 2, "diesel": 3}
-TITLE_MAP     = {"clean": 0, "rebuilt": 2, "salvage": 4, "lien": 1}
-
 
 def build_features(year, odo, cond, drive, trans, fuel, title, cyls, make, model_name, state):
-    age    = meta["current_year"] - year
-    make_k = make.lower()
-    mm_k   = f"{make_k}_{model_name.lower()}"
-    return np.array([[
-        age, odo,
-        CONDITION_MAP.get(cond, 3),
-        DRIVE_MAP.get(drive, 0),
-        TRANS_MAP.get(trans, 1),
-        FUEL_MAP.get(fuel, 0),
-        TITLE_MAP.get(title, 0),
-        float(cyls),
-        meta["make_ratios"].get(make_k, 1.0),
-        meta["model_ratios"].get(mm_k, meta["make_ratios"].get(make_k, 1.0)),
-        meta["state_ratios"].get(state.lower(), 1.0),
-        age * odo,
-    ]])
+    car = pd.DataFrame([{
+        "year": year, "odometer": odo, "condition": cond, "drive": drive,
+        "transmission": trans, "fuel": fuel, "title_status": title, "cylinders": cyls,
+        "manufacturer": make, "model": model_name, "state": state,
+    }])
+    return feature_matrix(add_features(car, meta))
 
 
 @app.route("/")
