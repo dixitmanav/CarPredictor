@@ -8,7 +8,7 @@ Dealers have more pricing information than buyers do. This project uses real pri
 
 1. **Clean**: filter 426k raw listings down to realistic daily drivers (2000–2024, $1.5k–$80k, ≤300k miles).
 2. **Normalize model names**: Craigslist model names are free text (`"civic ex-l 4dr"`, `"CIVIC"`, `"civic 5-speed"`). A custom normalizer strips trim/body/drivetrain tokens and fuzzy-clusters spelling variants per make with guards so distinct models (`c-class` vs `e-class`, `silverado 1500` vs `2500hd`) never merge.
-3. **Engineer features**: age, mileage, condition, drivetrain, fuel, title risk, cylinders, an age × mileage interaction, and target-encoded price ratios for make, make+model, and state (so hundreds of models generalize without one-hot explosion).
+3. **Engineer features**: age, mileage, condition, drivetrain, fuel, title risk, cylinders, an age × mileage interaction, and target-encoded price ratios for make, make+model, and state (so hundreds of models generalize without one-hot explosion). Encodings are fit on training rows only, after the train/test split, and smoothed toward the parent group so rare models aren't encoded by one car's own price.
 4. **Train**: two Gradient Boosting models on the same prices. One predicts the typical purchase price (absolute-error loss, robust to outlier listings). The other uses quantile regression to predict the 25th-percentile price as the trade-in anchor.
 5. **Serve**: a Flask web app turns predictions and model error into negotiation ranges.
 
@@ -20,10 +20,10 @@ Both models evaluated on a held-out 20% test set (67,197 listings):
 
 | Model | Metric | Value |
 |---|---|---|
-| Purchase price (GBR, absolute-error loss) | Mean absolute error | **$3,056** |
-| | R² | **0.869** |
-| Trade-in value (GBR, 25th-percentile quantile loss) | Test prices below prediction (target 25%) | **25.0%** |
-| | Pinball loss vs. constant-quantile baseline | **$1,170 vs $3,595** (−67%) |
+| Purchase price (GBR, absolute-error loss) | Mean absolute error | **$3,099** |
+| | R² | **0.863** |
+| Trade-in value (GBR, 25th-percentile quantile loss) | Test prices below prediction (target 25%) | **24.8%** |
+| | Pinball loss vs. constant-quantile baseline | **$1,171 vs $3,595** (−67%) |
 
 The trade-in model uses **quantile regression**: it's trained on the same listing prices but predicts the 25th percentile for each specific car, a lowball-but-fair wholesale anchor. Its ranges scale with the car's value, since errors on a $4k car and a $25k truck differ in size.
 

@@ -16,6 +16,15 @@ YEAR_MIN = 2000
 DEALER_DISCOUNT = 0.15
 TRADEIN_QUANTILE = 0.25   # trade-in model predicts this percentile of comparable listing prices
 
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
+# Target encodings blend each group's median toward its parent (model -> make -> global)
+# as if the parent contributed this many extra listings. Keeps rare groups from being
+# encoded by one or two noisy prices.
+ENCODING_SMOOTHING = 10
+# Minimum listings for a model to appear in the app's dropdown.
+MIN_CATALOG_LISTINGS = 10
+
 # Columns kept from the raw Craigslist dump; everything else is dropped in step 1.
 RAW_COLUMNS = [
     "price", "year", "odometer", "manufacturer", "model", "condition",
@@ -27,7 +36,7 @@ CONDITION_MAP = {"salvage": 1, "fair": 2, "good": 3, "excellent": 4, "like new":
 DRIVE_MAP     = {"fwd": 0, "rwd": 1, "4wd": 2}
 TRANS_MAP     = {"automatic": 1, "manual": 0, "other": 0}
 FUEL_MAP      = {"gas": 0, "hybrid": 1, "electric": 2, "diesel": 3, "other": 0}
-TITLE_MAP     = {"clean": 0, "rebuilt": 2, "salvage": 4, "lien": 1, "missing": 3, "parts only": 5}
+TITLE_MAP     = {"clean": 0, "rebuilt": 2, "salvage": 4, "lien": 1, "missing": 3, "parts only": 4}
 
 FEATURES = [
     "age", "odometer", "condition_score", "drive_enc", "trans_enc",

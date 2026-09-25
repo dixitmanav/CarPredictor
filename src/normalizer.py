@@ -36,6 +36,7 @@ TRIM_TOKENS = frozenset({
     '2d', '4d', '2dr', '4dr',
     # Dodge / Chrysler / SRT trims
     'sxt', 'rt', 'srt', 'srt8', 'scat', 'pack', 'mopar', 'rallye',
+    '1794',                           # Toyota Tundra trim edition
     # Misc
     'new', 'model', 'package',
 })
@@ -56,7 +57,7 @@ def strip_trims(name: str) -> str:
     base = []
     for token in name.split():
         clean = re.sub(r'[^\w\-]', '', token)   # keep alphanumeric + dashes
-        if clean in TRIM_TOKENS:
+        if not clean or clean in TRIM_TOKENS:
             continue
         if len(clean) <= 1 and clean.isalpha():  # lone letters are trim markers
             continue
@@ -68,6 +69,15 @@ def strip_trims(name: str) -> str:
 
 
 _PUNCT_RE = re.compile(r'[\s\-_/]')
+
+# A model-tier number: "1500", "2500hd", "350z". Four-digit years are not tiers.
+_TIER_RE = re.compile(r'\d{3,4}[a-z]*')
+
+
+def _is_tier(token: str) -> bool:
+    if not _TIER_RE.fullmatch(token):
+        return False
+    return not (token.isdigit() and 1980 <= int(token) <= 2030)
 
 
 def _similarity(a: str, b: str) -> int:
@@ -135,10 +145,10 @@ def build_model_map(model_series: pd.Series, threshold: int = 82) -> dict:
 
     # Pass 2 — prefix absorption
     # Any cluster head whose stripped name starts with another canonical (+ space)
-    # gets absorbed — UNLESS the trailing suffix contains a standalone 3-digit-plus
-    # number, which would indicate a model tier ("silverado 1500" vs "silverado",
-    # "sierra 2500hd" vs "sierra").
-    _BIG_NUM = re.compile(r'\d{3,}')
+    # gets absorbed — UNLESS the suffix starts with a model-tier number
+    # ("silverado 1500" vs "silverado", "sierra 2500hd" vs "sierra"). Only the first
+    # suffix token counts, so free text like "4runner 40l ... 63000 miles" or a year
+    # ("avalon 2001") is still absorbed.
     canonicals = sorted(
         {v for v in cluster_head.values() if cluster_head.get(v) == v},
         key=len, reverse=True,   # longest first so "grand cherokee" beats "grand"
@@ -150,9 +160,9 @@ def build_model_map(model_series: pd.Series, threshold: int = 82) -> dict:
             if canon == name:
                 continue
             if name.startswith(canon + ' '):
-                extra = name[len(canon):].strip()
-                if _BIG_NUM.search(extra):
-                    continue   # suffix has a model-tier number — keep separate
+                extra = name[len(canon):].split()
+                if extra and _is_tier(extra[0]):
+                    continue   # suffix is a model tier — keep separate
                 cluster_head[name] = canon
                 break
 

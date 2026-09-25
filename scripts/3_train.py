@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_pinball_loss, r2_score
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -25,10 +24,10 @@ df = pd.read_csv(FEATURES_DATA, low_memory=False)
 with open(ENCODINGS_PATH) as f:
     enc = json.load(f)
 
-X = df[FEATURES].values
-y = df["price"].values
-
-X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
+# Use the split made in step 2, where the target encodings were fit on train rows only.
+train, test = df[df["split"] == "train"], df[df["split"] == "test"]
+X_tr, y_tr = train[FEATURES].values, train["price"].values
+X_te, y_te = test[FEATURES].values, test["price"].values
 print(f"Train: {len(X_tr):,}  |  Test: {len(X_te):,}")
 
 purchase_model = Pipeline([

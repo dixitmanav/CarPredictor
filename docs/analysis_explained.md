@@ -77,7 +77,7 @@ States like California, New York, and Washington have higher median prices than 
 This is an ordinal (ordered) encoding, not one-hot. Condition has a clear ranking — excellent is strictly better than good — so treating it as a continuous ordinal number is appropriate. Using one-hot would imply conditions are unordered categories, which is wrong.
 
 ### Drive, Transmission, Fuel, Title (ordinal/binary)
-Same logic: these have a meaningful order or binary interpretation. Title risk in particular is a risk score — clean=0 implies no risk, salvage=4 implies highest risk.
+Same logic: these have a meaningful order or binary interpretation. Title risk in particular is a risk score — clean=0 implies no risk, salvage=4 implies highest risk. "Parts only" titles also get 4: with only 35 listings (0.01% of the data) the model can't learn a separate effect for them, so they borrow salvage's.
 
 ### Cylinders
 Extracted as a number from strings like "4 cylinders". 4-cylinder engines are standard commuter cars; 6 and 8 cylinders command a premium.
@@ -90,6 +90,15 @@ This is the key design decision for generalization.
 **The solution:** Target encoding. For each make, compute the median listing price and divide by the global median. This produces a `make_ratio` (e.g., BMW ≈ 2.1, meaning BMWs sell for about 2.1× the average). The same ratio is computed per `make_model` pair.
 
 This collapses hundreds of categories into a single continuous number that the model can use, and it naturally handles the fact that a 2019 Camry and a 2019 Accord are different price tiers from a 2019 Civic.
+
+**Two safeguards make target encoding honest:**
+
+1. **Fit on training rows only.** The train/test split happens *before* the encodings are computed (`scripts/2_features.py`). If test prices were included, the features would already contain part of the answer the model is graded on. An earlier version made this mistake.
+2. **Smoothing.** Two-thirds of make+model names in the data have fewer than 10 listings (many are free-text leftovers). A raw median from one listing is just that car's price: for a single-listing model, the "feature" *is* the target. Each group's median is therefore blended toward its parent's (model → make → overall) as if the parent contributed 10 extra listings:
+
+   `smoothed = (n × group_median + 10 × parent_median) / (n + 10)`
+
+   A model with 5,000 listings keeps essentially its own median. A model with 1 listing is mostly its make's median.
 
 **Why median and not mean?** Price distributions are right-skewed. The mean is pulled up by high-priced outliers. The median is a more stable central tendency for this kind of data.
 
@@ -135,18 +144,18 @@ There is no "trade-in value" column in the dataset — Craigslist doesn't have i
 - `loss="absolute_error"`: Optimizes for MAE directly. The mean-squared-error loss would penalize large errors quadratically, making the model overfit to outlier listings.
 
 **Results on held-out test set (67,197 listings, all makes and models):**
-- MAE ≈ $3,056
-- R² ≈ 0.869
+- MAE ≈ $3,099
+- R² ≈ 0.863
 
-Interpretation: on average, the model is off by about $3,056 and explains 86.9% of the variation in listing prices. Craigslist prices are noisy (the same car is listed at very different prices by different sellers), so a few thousand dollars of error is expected. The single-model notebook (`notebooks/car_negotiator.ipynb`) scores much higher because it only has to price one model, e.g. Camrys.
+Interpretation: on average, the model is off by about $3,099 and explains 86.3% of the variation in listing prices. Craigslist prices are noisy (the same car is listed at very different prices by different sellers), so a few thousand dollars of error is expected. The single-model notebook (`notebooks/car_negotiator.ipynb`) scores much higher because it only has to price one model, e.g. Camrys.
 
 ### Trade-In Value Model: Gradient Boosting with Quantile Loss
 
 Same algorithm and hyperparameters as the purchase model, with one change: `loss="quantile", alpha=0.25`. A normal regression model aims for the middle of the price distribution. Quantile loss tilts the target by penalizing over-predictions three times as heavily as under-predictions. The result is that the model's best guess settles at the price 25% of comparable cars fall below.
 
 **How it is evaluated.** R² and MAE against actual prices don't make sense here, since the model is *supposed* to predict below the typical price. Instead:
-- **Coverage (calibration):** the share of test prices that fall below the prediction. It should be 25%. **Result: 25.0%.**
-- **Pinball loss:** the standard error metric for quantile predictions (it's what the model minimizes). Compared with a baseline that predicts the same overall 25th-percentile price for every car: **$1,170 vs $3,595**, a 67% reduction. So the model is genuinely using each car's features.
+- **Coverage (calibration):** the share of test prices that fall below the prediction. It should be 25%. **Result: 24.8%.**
+- **Pinball loss:** the standard error metric for quantile predictions (it's what the model minimizes). Compared with a baseline that predicts the same overall 25th-percentile price for every car: **$1,171 vs $3,595**, a 67% reduction. So the model is genuinely using each car's features.
 
 ---
 
@@ -166,12 +175,12 @@ Pipeline([("scaler", StandardScaler()), ("model", ...)])
 ## Evaluation
 
 ### Metrics
-- **MAE (Mean Absolute Error):** Average dollar error. Directly interpretable. "The purchase model is off by about $3,056 on average."
-- **R² (coefficient of determination):** Fraction of price variance explained by the model. 0.869 means the purchase model explains 86.9% of why prices differ between listings.
+- **MAE (Mean Absolute Error):** Average dollar error. Directly interpretable. "The purchase model is off by about $3,099 on average."
+- **R² (coefficient of determination):** Fraction of price variance explained by the model. 0.863 means the purchase model explains 86.3% of why prices differ between listings.
 - **Coverage and pinball loss (trade-in model):** see the trade-in model section above.
 
 ### Train/Test Split
-80/20 split with `random_state=42`. The test set was held out entirely — no hyperparameter tuning was done on it, so the reported metrics are unbiased estimates of real-world performance.
+80/20 split with `random_state=42`, made in step 2 before any target encodings are fit. The test set was held out entirely — its prices are not used for the encodings and no hyperparameter tuning was done on it, so the reported metrics are unbiased estimates of real-world performance.
 
 ### Residual Analysis
 Plotting `actual - predicted` reveals whether errors are symmetric (good) or systematically biased in a direction (bad). Near-zero mean residual confirms the model isn't systematically under- or over-pricing cars.
@@ -218,5 +227,5 @@ For the trade-in model, the ranking is similar since it learns from the same pri
 1. **Data is from ~2021.** Prices have changed significantly since then (chip shortage, post-COVID used car boom). The model's absolute predictions may be off by 10–20% for current prices, though the relative relationships (age/miles/condition effects) remain valid.
 2. **Regional coverage is uneven.** Some states have many Craigslist listings; others have few. The state ratio encoding may be noisy for low-listing states.
 3. **Electric vehicles.** The dataset predates the wide availability of EVs, so electric vehicle predictions have less training data and should be treated cautiously.
-4. **Rare makes/models.** For a make/model with fewer than ~50 listings in the dataset, the target encoding is based on limited data. The model falls back to the make-level ratio, which may be off.
+4. **Rare makes/models.** For a make/model with few listings, the smoothed encoding leans on the make-level price, so a rare trim of a common make is priced like a typical car of that make. Models with fewer than 10 listings are left out of the app's dropdown.
 5. **Mileage of 0.** Listings with exactly 0 miles are kept but likely misreported. They may pull predictions slightly low for very-low-mileage cars.
